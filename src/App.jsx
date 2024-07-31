@@ -22,6 +22,34 @@ const App = () => {
   // model configs
   const modelName = "yolov8n";
 
+  let processTimeoutId = null;
+  
+  const processStream = (vidSource, model, canvasRef) => {    
+    /**
+     * Function to detect every frame from video
+     */
+    const processFrame = async () => {
+      if (vidSource.videoWidth === 0 && vidSource.srcObject === null) {
+        const ctx = canvasRef.getContext("2d");
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
+        return; // handle if source is closed
+      }
+  
+      console.log("Processing at", new Date().toISOString());
+
+      detect(vidSource, model, canvasRef, () => {
+        // requestAnimationFrame(processFrame); // get another frame
+      });
+
+      processTimeoutId = setTimeout(processFrame, Math.ceil(1000 / 15));
+    };
+  
+    processFrame(); // initialize to detect every frame
+    
+  };
+
+  
+
   useEffect(() => {
     tf.ready().then(async () => {
       const yolov8 = await tf.loadGraphModel(
@@ -34,6 +62,7 @@ const App = () => {
       ); // load model
 
       // warming up model
+      console.log(yolov8.inputs[0].shape);
       const dummyInput = tf.ones(yolov8.inputs[0].shape);
       const warmupResults = yolov8.execute(dummyInput);
 
@@ -70,13 +99,13 @@ const App = () => {
           autoPlay
           muted
           ref={cameraRef}
-          onPlay={() => detectVideo(cameraRef.current, model, canvasRef.current)}
+          onPlay={() => processStream(cameraRef.current, model, canvasRef.current)}
         />
         <video
           autoPlay
           muted
           ref={videoRef}
-          onPlay={() => detectVideo(videoRef.current, model, canvasRef.current)}
+          onPlay={() => processStream(videoRef.current, model, canvasRef.current)}
         />
         <canvas width={model.inputShape[1]} height={model.inputShape[2]} ref={canvasRef} />
       </div>
