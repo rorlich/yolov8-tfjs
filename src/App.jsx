@@ -39,7 +39,7 @@ const App = () => {
 
       detect(vidSource, model, canvasRef, () => {
         // requestAnimationFrame(processFrame); // get another frame
-      });
+      }, true);
 
       processTimeoutId = setTimeout(processFrame, Math.ceil(1000 / 15));
     };

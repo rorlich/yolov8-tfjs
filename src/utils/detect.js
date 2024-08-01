@@ -1,5 +1,5 @@
 import * as tf from "@tensorflow/tfjs";
-import { renderBoxes } from "./renderBox";
+import { renderBoxes, createMaskedFrame } from "./renderBox";
 import labels from "./labels.json";
 
 const numClass = labels.length;
@@ -44,8 +44,9 @@ const preprocess = (source, modelWidth, modelHeight) => {
  * @param {tf.GraphModel} model loaded YOLOv8 tensorflow.js model
  * @param {HTMLCanvasElement} canvasRef canvas reference
  * @param {VoidFunction} callback function to run after detection process
+ * @param {Boolean} useMask whether to use createMaskedFrame or renderBoxes
  */
-export const detect = async (source, model, canvasRef, callback = () => {}) => {
+export const detect = async (source, model, canvasRef, callback = () => {}, useMask = false) => {
   const [modelWidth, modelHeight] = model.inputShape.slice(1, 3); // get model width and height
 
   tf.engine().startScope(); // start scoping tf engine
@@ -115,8 +116,12 @@ export const detect = async (source, model, canvasRef, callback = () => {}) => {
   const filtered_scores_data = filteredIndices.map(i => scores_data[i]);
   const filtered_classes_data = filteredIndices.map(i => classes_data[i]);
 
-  // Render boxes with filtered data
-  renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio]);
+  // Replace the renderBoxes call with this conditional block
+  if (useMask) {
+    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio]);
+  } else {
+    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio]);
+  }
 
   // renderBoxes(canvasRef, boxes_data, scores_data, classes_data, [xRatio, yRatio]); // render boxes
   tf.dispose([res, transRes, boxes, scores, classes, nms]); // clear memory
@@ -131,8 +136,9 @@ export const detect = async (source, model, canvasRef, callback = () => {}) => {
  * @param {HTMLVideoElement} vidSource video source
  * @param {tf.GraphModel} model loaded YOLOv8 tensorflow.js model
  * @param {HTMLCanvasElement} canvasRef canvas reference
+ * @param {Boolean} useMask whether to use createMaskedFrame or renderBoxes
  */
-export const detectVideo = (vidSource, model, canvasRef) => {
+export const detectVideo = (vidSource, model, canvasRef, useMask = false) => {
   /**
    * Function to detect every frame from video
    */
@@ -145,7 +151,7 @@ export const detectVideo = (vidSource, model, canvasRef) => {
 
     detect(vidSource, model, canvasRef, () => {
       requestAnimationFrame(detectFrame); // get another frame
-    });
+    }, useMask);
   };
 
   detectFrame(); // initialize to detect every frame

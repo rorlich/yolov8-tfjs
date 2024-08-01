@@ -63,6 +63,34 @@ export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ra
   }
 };
 
+/**
+ * Mask all pixels outside the boxes in black
+ * @param {HTMLCanvasElement} canvasRef canvas tag reference
+ * @param {Array} boxes_data boxes array
+ * @param {Array} scores_data scores array
+ * @param {Array} classes_data class array
+ * @param {Array[Number]} ratios boxes ratio [xRatio, yRatio]
+ */
+export const createMaskedFrame = (canvasRef, boxes_data, scores_data, classes_data, ratios) => {
+  const ctx = canvasRef.getContext("2d");
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
+
+  if (scores_data.length > 0) {
+    let [y1, x1, y2, x2] = boxes_data.slice(0, 4);
+    x1 *= ratios[0];
+    x2 *= ratios[0];
+    y1 *= ratios[1];
+    y2 *= ratios[1];
+
+    // Fill the entire canvas with black
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // Clear the area inside the first box
+    ctx.clearRect(x1, y1, x2 - x1, y2 - y1);
+  }
+};
+
 class Colors {
   // ultralytics color palette https://ultralytics.com/
   constructor() {
