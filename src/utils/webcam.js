@@ -1,6 +1,19 @@
 /**
  * Class to handle webcam
  */
+
+import { WIDTH, HEIGHT, FRAME_RATE } from "../consts";
+
+const constraints = {
+  audio: false,
+  video: {
+    width: { exact: WIDTH },
+    height: { exact: HEIGHT },
+    frameRate: { exact: FRAME_RATE },
+    facingMode: "user",
+  },
+};
+
 export class Webcam {
   /**
    * Open webcam and stream it through video tag.
@@ -9,14 +22,11 @@ export class Webcam {
   open = (videoRef) => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices
-        .getUserMedia({
-          audio: false,
-          video: {
-            facingMode: "environment",
-          },
-        })
+        .getUserMedia(constraints)
         .then((stream) => {
           videoRef.srcObject = stream;
+          videoRef.width = WIDTH;
+          videoRef.height = HEIGHT;
         });
     } else alert("Can't open Webcam!");
   };
