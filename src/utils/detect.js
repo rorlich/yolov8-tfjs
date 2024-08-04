@@ -46,11 +46,11 @@ const preprocess = (source, modelWidth, modelHeight) => {
  * @param {VoidFunction} callback function to run after detection process
  * @param {Boolean} useMask whether to use createMaskedFrame or renderBoxes
  */
-export const detect = async (source, model, canvasRef, callback = () => {}, useMask = false) => {
+export const detect = async (source, model, canvasRef, callback = () => { }, useMask = false) => {
   const [modelWidth, modelHeight] = model.inputShape.slice(1, 3); // get model width and height
 
   tf.engine().startScope(); // start scoping tf engine
-  
+
   const [input, xRatio, yRatio] = preprocess(source, modelWidth, modelHeight); // preprocess image
 
   const res = model.net.execute(input); // inference model
@@ -116,12 +116,12 @@ export const detect = async (source, model, canvasRef, callback = () => {}, useM
   const filtered_scores_data = filteredIndices.map(i => scores_data[i]);
   const filtered_classes_data = filteredIndices.map(i => classes_data[i]);
 
-  
+
   // Replace the renderBoxes call with this conditional block
   if (useMask) {
-    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio]);
+    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio], source);
   } else {
-    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio]);
+    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio], source);
   }
 
   // renderBoxes(canvasRef, boxes_data, scores_data, classes_data, [xRatio, yRatio]); // render boxes
