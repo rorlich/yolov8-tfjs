@@ -25,7 +25,6 @@ const App = () => {
   const cameraRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const hiddenCanvasRef = useRef(null);
   const muxerRef = useRef({ current: null });
   const videoEncoderRef = useRef({ current: null });
   const skippedFramesRef = useRef(0); // Ref to track skipped frames
@@ -43,8 +42,6 @@ const App = () => {
 
     // canvasRef.width = WIDTH
     // canvasRef.height = HEIGHT
-    // hiddenCanvasRef.current.width = WIDTH;
-    // hiddenCanvasRef.current.height = HEIGHT;
 
     /**
      * Function to detect every frame from video
@@ -239,7 +236,6 @@ const App = () => {
           onPlay={() => processStream(videoRef.current, model, canvasRef.current)}
         /> */}
         <canvas width={model.inputShape[1]} height={model.inputShape[2]} ref={canvasRef} />
-        <canvas width={model.inputShape[1]} height={model.inputShape[2]} ref={hiddenCanvasRef} />
       </div>
 
       <ButtonHandler imageRef={imageRef} cameraRef={cameraRef} videoRef={videoRef} />
