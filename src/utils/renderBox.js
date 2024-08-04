@@ -1,4 +1,5 @@
 import labels from "./labels.json";
+import { WIDTH, HEIGHT } from "../consts";
 
 /**
  * Render prediction boxes
@@ -8,9 +9,10 @@ import labels from "./labels.json";
  * @param {Array} classes_data class array
  * @param {Array[Number]} ratios boxes ratio [xRatio, yRatio]
  */
-export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ratios) => {
+export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ratios, source) => {
   const ctx = canvasRef.getContext("2d");
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
+  ctx.clearRect(source, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
+  ctx.drawImage(source, 0, 0, ctx.canvas.width, ctx.canvas.height);
 
   const colors = new Colors();
 
@@ -71,7 +73,7 @@ export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ra
  * @param {Array} classes_data class array
  * @param {Array[Number]} ratios boxes ratio [xRatio, yRatio]
  */
-export const createMaskedFrame = (canvasRef, boxes_data, scores_data, classes_data, ratios) => {
+export const createMaskedFrame = (canvasRef, boxes_data, scores_data, classes_data, ratios, source) => {
   const ctx = canvasRef.getContext("2d");
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
 
@@ -85,9 +87,17 @@ export const createMaskedFrame = (canvasRef, boxes_data, scores_data, classes_da
     // Fill the entire canvas with black
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
     // Clear the area inside the first box
     ctx.clearRect(x1, y1, x2 - x1, y2 - y1);
+
+    // Draw the forehead area from the video onto the canvas
+    //for mobile 
+    if (window.innerWidth <= 768) {
+      ctx.drawImage(source, x1 * 0.65, y1, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
+    } else {
+      ctx.drawImage(source, x1, y1 * 0.75, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
+
+    }
   }
 };
 
@@ -125,8 +135,8 @@ class Colors {
     var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result
       ? `rgba(${[parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)].join(
-          ", "
-        )}, ${alpha})`
+        ", "
+      )}, ${alpha})`
       : null;
   };
 }

@@ -40,8 +40,8 @@ const App = () => {
     
     let isProcessing = false; // Flag to track if processFrame is currently running
 
-    canvasRef.width = WIDTH
-    canvasRef.height = HEIGHT
+    // canvasRef.width = WIDTH
+    // canvasRef.height = HEIGHT
 
     /**
      * Function to detect every frame from video
@@ -70,13 +70,15 @@ const App = () => {
 
       isProcessing = true;
       console.log("Processing at", new Date().toISOString());
-
-      await detect(vidSource, model, canvasRef, () => {
-        
-      }, false);
-
+    
+      // Perform detection and any other processing here
+      await detect(vidSource, model, canvasRef, () => {}, true);
+    
+      // Encode the current content of the canvas as a video frame
       await encodeVideoFrame(canvasRef, timestamp);
+    
       isProcessing = false;
+    
       // processTimeoutId = setTimeout(processFrame, Math.ceil(1000 / 15));
     };
   
@@ -89,8 +91,8 @@ const App = () => {
 
       video: {
         codec: "avc",
-        width: canvasRef.current?.width || WIDTH,
-        height: canvasRef.current?.height || HEIGHT,
+        width:  WIDTH,
+        height:  HEIGHT,
       },
       // Puts metadata to the start of the file. Since we're using ArrayBufferTarget anyway, this makes no difference
       // to memory footprint.
@@ -106,8 +108,8 @@ const App = () => {
     });
     videoEncoder.configure({
       codec: "avc1.64001F",
-      width: canvasRef.current?.width || WIDTH,
-      height: canvasRef.current?.height || HEIGHT,
+      width:  WIDTH,
+      height: HEIGHT,
       bitrate: 2_000_000, // 2 Mbps
       framerate: FRAME_RATE,
     });
@@ -227,12 +229,12 @@ const App = () => {
           onPlay={() => processStream(cameraRef.current, model, canvasRef.current)}
           onEndedCapture={() => console.log("Stopped")}
         />
-        <video
+        {/* <video
           autoPlay
           muted
           ref={videoRef}
           onPlay={() => processStream(videoRef.current, model, canvasRef.current)}
-        />
+        /> */}
         <canvas width={model.inputShape[1]} height={model.inputShape[2]} ref={canvasRef} />
       </div>
 
