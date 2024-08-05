@@ -72,7 +72,7 @@ const App = () => {
       console.log("Processing at", new Date().toISOString());
     
       // Perform detection and any other processing here
-      await detect(vidSource, model, canvasRef, () => {}, true);
+      await detect(vidSource, model, canvasRef, () => {}, false);
     
       // Encode the current content of the canvas as a video frame
       await encodeVideoFrame(canvasRef, timestamp);

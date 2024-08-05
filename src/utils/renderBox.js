@@ -11,6 +11,8 @@ import { WIDTH, HEIGHT } from "../consts";
  */
 export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ratios, source) => {
   const ctx = canvasRef.getContext("2d");
+  // console.log("canvas size", ctx.canvas.width, ctx.canvas.height);
+
   ctx.clearRect(source, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
   ctx.drawImage(source, 0, 0, ctx.canvas.width, ctx.canvas.height);
 
@@ -89,15 +91,19 @@ export const createMaskedFrame = (canvasRef, boxes_data, scores_data, classes_da
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     // Clear the area inside the first box
     ctx.clearRect(x1, y1, x2 - x1, y2 - y1);
+    
+    // is source same dimes as canvas?
 
+
+    // ctx.drawImage(source, x1, y1, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
     // Draw the forehead area from the video onto the canvas
     //for mobile 
-    if (window.innerWidth <= 768) {
-      ctx.drawImage(source, x1 * 0.65, y1, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
-    } else {
-      ctx.drawImage(source, x1, y1 * 0.75, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
+    // if (window.innerWidth <= 768) {
+    //   ctx.drawImage(source, x1 * 0.65, y1, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
+    // } else {
+    //   ctx.drawImage(source, x1, y1 * 0.75, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
 
-    }
+    // }
   }
 };
 
