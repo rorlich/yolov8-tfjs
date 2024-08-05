@@ -40,8 +40,8 @@ const App = () => {
     
     let isProcessing = false; // Flag to track if processFrame is currently running
 
-    // canvasRef.width = WIDTH
-    // canvasRef.height = HEIGHT
+    canvasRef.width = WIDTH
+    canvasRef.height = HEIGHT
 
     /**
      * Function to detect every frame from video
@@ -60,10 +60,10 @@ const App = () => {
       if (canvasRef === null) {
         return; // handle if canvas is not ready
       }
-
+      console.log(`video dims: ${vidSource.videoWidth} x ${vidSource.videoHeight} canvas dims: ${canvasRef.width} x ${canvasRef.height}`);
       const timestamp = performance.now() * 1000;
 
-      if (isProcessing) {
+      if (isProcessing) { // NOT RELEVANT 
         setFramesSkippedCount((prev) => prev + 1);
         return; // Skip this interval if the previous frame is still processing
       }
@@ -72,7 +72,7 @@ const App = () => {
       console.log("Processing at", new Date().toISOString());
     
       // Perform detection and any other processing here
-      await detect(vidSource, model, canvasRef, () => {}, false);
+      await detect(vidSource, model, canvasRef, () => {}, true);
     
       // Encode the current content of the canvas as a video frame
       await encodeVideoFrame(canvasRef, timestamp);

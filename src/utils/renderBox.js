@@ -13,8 +13,8 @@ export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ra
   const ctx = canvasRef.getContext("2d");
   // console.log("canvas size", ctx.canvas.width, ctx.canvas.height);
 
-  ctx.clearRect(source, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
-  ctx.drawImage(source, 0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
+  ctx.drawImage(source, 0, 0, source.width, source.height);
 
   const colors = new Colors();
 
