@@ -49,13 +49,16 @@ const preprocess = (source, modelWidth, modelHeight) => {
 export const detect = async (source, model, canvasRef, callback = () => { }, useMask = false) => {
   const [modelWidth, modelHeight] = model.inputShape.slice(1, 3); // get model width and height
 
+  // Get the original image dimensions
+  const originalWidth = source.width || source.videoWidth;
+  const originalHeight = source.height || source.videoHeight;
+
   tf.engine().startScope(); // start scoping tf engine
 
   const [input, xRatio, yRatio] = preprocess(source, modelWidth, modelHeight); // preprocess image
 
   const res = model.net.execute(input); // inference model
   console.log("model result", res);
-
 
   const transRes = res.transpose([0, 2, 1]); // transpose result [b, det, n] => [b, n, det]
   const boxes = tf.tidy(() => {
@@ -78,7 +81,7 @@ export const detect = async (source, model, canvasRef, callback = () => { }, use
 
   const [scores, classes] = tf.tidy(() => {
     // class scores
-    const rawScores = transRes.slice([0, 0, 4], [-1, -1, numClass]).squeeze(0); // #6 only squeeze axis 0 to handle only 1 class models
+    const rawScores = transRes.slice([0, 0, 4], [-1, -1, numClass]).squeeze(0);
     return [rawScores.max(1), rawScores.argMax(1)];
   }); // get max scores and classes index
 
@@ -116,15 +119,43 @@ export const detect = async (source, model, canvasRef, callback = () => { }, use
   const filtered_scores_data = filteredIndices.map(i => scores_data[i]);
   const filtered_classes_data = filteredIndices.map(i => classes_data[i]);
 
+  // Fine-tune scaling factors
+  const scaleX = (canvasRef.width / originalWidth) * 1.74;
+  const scaleY = (canvasRef.height / originalHeight) * 1.06;
+
+  // Add small offsets (in pixels)
+  const offsetX = 75;
+  const offsetY = 20;
+
+  const adjusted_boxes_data = filtered_boxes_data.map((value, index) => {
+    if (index % 4 === 1 || index % 4 === 3) { // x coordinates
+      return value * xRatio * scaleX + offsetX;
+    } else { // y coordinates
+      return value * yRatio * scaleY + offsetY;
+    }
+  });
+
+  const boxWidth = adjusted_boxes_data[3] - adjusted_boxes_data[1];
+  adjusted_boxes_data[1] -= boxWidth * 0.125; // Shift left edge to the left
+  adjusted_boxes_data[3] += boxWidth * 0.125; // Shift right edge to the right
+
+  const boxHeight = adjusted_boxes_data[2] - adjusted_boxes_data[0];
+  adjusted_boxes_data[0] += boxHeight * 0.035; // Shift top edge down slightly
+  adjusted_boxes_data[2] -= boxHeight * 0.035; // Shift bottom edge up slightly
+
+  // Additional fine-tuning
+  adjusted_boxes_data[1] += 8; // Shift left edge slightly more to the right
+  adjusted_boxes_data[3] += 8; // Shift right edge slightly more to the right
+  adjusted_boxes_data[0] -= 2; // Shift top edge slightly up
+  adjusted_boxes_data[2] -= 2;
 
   // Replace the renderBoxes call with this conditional block
   if (useMask) {
-    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio], source);
+    createMaskedFrame(canvasRef, adjusted_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], source);
   } else {
-    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio], source);
+    renderBoxes(canvasRef, adjusted_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], source);
   }
 
-  // renderBoxes(canvasRef, boxes_data, scores_data, classes_data, [xRatio, yRatio]); // render boxes
   tf.dispose([res, transRes, boxes, scores, classes, nms]); // clear memory
 
   callback();
