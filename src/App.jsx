@@ -155,7 +155,7 @@ const App = () => {
     let buffer = muxerRef.current?.target.buffer;
 
     if (download) {
-      // downloadBlob(new Blob([buffer]));
+       downloadBlob(new Blob([buffer]));
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
