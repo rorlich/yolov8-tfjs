@@ -33,10 +33,10 @@ export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ra
     const score = (scores_data[i] * 100).toFixed(1);
 
     let [y1, x1, y2, x2] = boxes_data.slice(i * 4, (i + 1) * 4);
-    x1 *= ratios[0];
-    x2 *= ratios[0];
-    y1 *= ratios[1];
-    y2 *= ratios[1];
+    // x1 *= ratios[0];
+    // x2 *= ratios[0];
+    // y1 *= ratios[1];
+    // y2 *= ratios[1];
     const width = x2 - x1;
     const height = y2 - y1;
 
@@ -77,25 +77,29 @@ export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ra
  */
 export const createMaskedFrame = (canvasRef, boxes_data, scores_data, classes_data, ratios, source) => {
   const ctx = canvasRef.getContext("2d");
+  // console.log("canvas size", ctx.canvas.width, ctx.canvas.height);
+  ctx.fillStyle = 'black';
+
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  // ctx.drawImage(source, 0, 0, source.width, source.height);
 
   if (scores_data.length > 0) {
     let [y1, x1, y2, x2] = boxes_data.slice(0, 4);
-    x1 *= ratios[0];
-    x2 *= ratios[0];
-    y1 *= ratios[1];
-    y2 *= ratios[1];
+    // x1 *= ratios[0];
+    // x2 *= ratios[0];
+    // y1 *= ratios[1];
+    // y2 *= ratios[1];
 
     // Fill the entire canvas with black
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    // ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     // Clear the area inside the first box
     ctx.clearRect(x1, y1, x2 - x1, y2 - y1);
     
     // is source same dimes as canvas?
 
 
-    // ctx.drawImage(source, x1, y1, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
+    ctx.drawImage(source, x1, y1, x2 - x1, y2 - y1, x1, y1, x2 - x1, y2 - y1);
     // Draw the forehead area from the video onto the canvas
     //for mobile 
     // if (window.innerWidth <= 768) {

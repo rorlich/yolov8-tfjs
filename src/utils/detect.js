@@ -1,5 +1,6 @@
 import * as tf from "@tensorflow/tfjs";
 import { renderBoxes, createMaskedFrame } from "./renderBox";
+import { tensorToDownloadableImage, cropTensor, scaleAndPositionBoundingBox } from "./tensor";
 import labels from "./labels.json";
 
 const numClass = labels.length;
@@ -9,30 +10,49 @@ const numClass = labels.length;
  * @param {HTMLVideoElement|HTMLImageElement} source
  * @param {Number} modelWidth
  * @param {Number} modelHeight
+ * @param {Array} faceBox The bounding box [x1, y1, x2, y2]
  * @returns input tensor, xRatio and yRatio
  */
-const preprocess = (source, modelWidth, modelHeight) => {
+const preprocess = (source, modelWidth, modelHeight, faceBox) => {
   let xRatio, yRatio; // ratios for boxes
 
   const input = tf.tidy(() => {
     const img = tf.browser.fromPixels(source);
 
-    // padding image to square => [n, m] to [n, n], n > m
-    const [h, w] = img.shape.slice(0, 2); // get source width and height
-    const maxSize = Math.max(w, h); // get max size
-    const imgPadded = img.pad([
-      [0, maxSize - h], // padding y [bottom only]
-      [0, maxSize - w], // padding x [right only]
+    const croppedImg = faceBox ? cropTensor(img, faceBox) : img;
+    const [originalH, originalW] = croppedImg.shape.slice(0, 2); // get source width and height
+
+    // Get source dimensions
+    const [h, w] = croppedImg.shape.slice(0, 2); // get source width and height
+    const aspectRatio = w / h; // calculate aspect ratio
+
+    // Calculate new dimensions while maintaining aspect ratio
+    let newWidth, newHeight;
+    if (w > h) {
+      newWidth = modelWidth;
+      newHeight = modelWidth / aspectRatio;
+    } else {
+      newHeight = modelHeight;
+      newWidth = modelHeight * aspectRatio;
+    }
+
+    // Resize the image to the new dimensions
+    const imgResized = tf.image.resizeBilinear(croppedImg, [Math.round(newHeight), Math.round(newWidth)]);
+    xRatio = modelWidth / w; // update xRatio based on the original width
+    yRatio = modelHeight / h; // update yRatio based on the original height
+
+    // Calculate padding to fit the resized image into the model's input dimensions
+    const padHeight = modelHeight - Math.round(newHeight);
+    const padWidth = modelWidth - Math.round(newWidth);
+
+    // Add padding to the resized image to fit the model dimensions
+    const imgPadded = imgResized.pad([
+      [Math.floor(padHeight / 2), Math.ceil(padHeight / 2)], // padding y [top, bottom]
+      [Math.floor(padWidth / 2), Math.ceil(padWidth / 2)],   // padding x [left, right]
       [0, 0],
     ]);
 
-    xRatio = maxSize / w; // update xRatio
-    yRatio = maxSize / h; // update yRatio
-
-    return tf.image
-      .resizeBilinear(imgPadded, [modelWidth, modelHeight]) // resize frame
-      .div(255.0) // normalize
-      .expandDims(0); // add batch
+    return imgPadded.div(255.0).expandDims(0); // normalize and add batch dimension
   });
 
   return [input, xRatio, yRatio];
@@ -46,7 +66,7 @@ const preprocess = (source, modelWidth, modelHeight) => {
  * @param {VoidFunction} callback function to run after detection process
  * @param {Boolean} useMask whether to use createMaskedFrame or renderBoxes
  */
-export const detect = async (source, model, canvasRef, callback = () => { }, useMask = false) => {
+export const detect = async (source, model, canvasRef, callback = () => { }, useMask = false, faceBox = null) => {
   const [modelWidth, modelHeight] = model.inputShape.slice(1, 3); // get model width and height
 
   // Get the original image dimensions
@@ -55,8 +75,8 @@ export const detect = async (source, model, canvasRef, callback = () => { }, use
 
   tf.engine().startScope(); // start scoping tf engine
 
-  const [input, xRatio, yRatio] = preprocess(source, modelWidth, modelHeight); // preprocess image
-
+  const [input, xRatio, yRatio] = preprocess(source, modelWidth, modelHeight, faceBox); // preprocess image
+  
   const res = model.net.execute(input); // inference model
   console.log("model result", res);
 
@@ -85,11 +105,9 @@ export const detect = async (source, model, canvasRef, callback = () => { }, use
     return [rawScores.max(1), rawScores.argMax(1)];
   }); // get max scores and classes index
 
-  const nms = await tf.image.nonMaxSuppressionAsync(boxes, scores, 500, 0.45, 0.2); // NMS to filter boxes
-
-  const boxes_data = boxes.gather(nms, 0).dataSync(); // indexing boxes by nms index
-  const scores_data = scores.gather(nms, 0).dataSync(); // indexing scores by nms index
-  const classes_data = classes.gather(nms, 0).dataSync(); // indexing classes by nms index
+  const boxes_data = boxes.dataSync(); // get boxes data
+  const scores_data = scores.dataSync(); // get scores data
+  const classes_data = classes.dataSync(); // get classes
 
   // Filter arrays
   let filteredIndices = [];
@@ -111,52 +129,28 @@ export const detect = async (source, model, canvasRef, callback = () => { }, use
     filteredIndices = [maxConfIndex];
   }
 
+  if (filteredIndices.length === 0) {
+    // tensorToDownloadableImage(input, "input.png");
+  }
+
   // Create new filtered arrays
   const filtered_boxes_data = filteredIndices.reduce((acc, i) => {
-    acc.push(...boxes_data.slice(i * 4, (i + 1) * 4));
+    const box = boxes_data.slice(i * 4, (i + 1) * 4);
+    const adjusted_box = scaleAndPositionBoundingBox(box, xRatio, yRatio, faceBox, originalWidth, originalHeight);
+    acc.push(...adjusted_box);
     return acc;
   }, []);
   const filtered_scores_data = filteredIndices.map(i => scores_data[i]);
   const filtered_classes_data = filteredIndices.map(i => classes_data[i]);
 
-  // Fine-tune scaling factors
-  const scaleX = (canvasRef.width / originalWidth) * 1.74;
-  const scaleY = (canvasRef.height / originalHeight) * 1.06;
-
-  // Add small offsets (in pixels)
-  const offsetX = 75;
-  const offsetY = 20;
-
-  const adjusted_boxes_data = filtered_boxes_data.map((value, index) => {
-    if (index % 4 === 1 || index % 4 === 3) { // x coordinates
-      return value * xRatio * scaleX + offsetX;
-    } else { // y coordinates
-      return value * yRatio * scaleY + offsetY;
-    }
-  });
-
-  const boxWidth = adjusted_boxes_data[3] - adjusted_boxes_data[1];
-  adjusted_boxes_data[1] -= boxWidth * 0.125; // Shift left edge to the left
-  adjusted_boxes_data[3] += boxWidth * 0.125; // Shift right edge to the right
-
-  const boxHeight = adjusted_boxes_data[2] - adjusted_boxes_data[0];
-  adjusted_boxes_data[0] += boxHeight * 0.035; // Shift top edge down slightly
-  adjusted_boxes_data[2] -= boxHeight * 0.035; // Shift bottom edge up slightly
-
-  // Additional fine-tuning
-  adjusted_boxes_data[1] += 8; // Shift left edge slightly more to the right
-  adjusted_boxes_data[3] += 8; // Shift right edge slightly more to the right
-  adjusted_boxes_data[0] -= 2; // Shift top edge slightly up
-  adjusted_boxes_data[2] -= 2;
-
   // Replace the renderBoxes call with this conditional block
   if (useMask) {
-    createMaskedFrame(canvasRef, adjusted_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], source);
+    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], source);
   } else {
-    renderBoxes(canvasRef, adjusted_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], source);
+    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], source);
   }
 
-  tf.dispose([res, transRes, boxes, scores, classes, nms]); // clear memory
+  tf.dispose([res, transRes, boxes, scores, classes]); // clear memory
 
   callback();
 

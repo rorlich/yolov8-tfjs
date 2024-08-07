@@ -4,6 +4,7 @@ import "@tensorflow/tfjs-backend-webgl"; // set backend to webgl
 import Loader from "./components/loader";
 import ButtonHandler from "./components/btn-handler";
 import { detect, detectVideo } from "./utils/detect";
+import { createBoundingBoxFromCenter } from "./utils/tensor";
 import "./style/App.css";
 import * as Mp4Muxer from "mp4-muxer";
 import { WIDTH, HEIGHT, FRAME_RATE } from "./consts";
@@ -70,9 +71,10 @@ const App = () => {
 
       isProcessing = true;
       console.log("Processing at", new Date().toISOString());
-    
+      
+      const faceBox = createBoundingBoxFromCenter(vidSource.videoWidth / 2, vidSource.videoHeight / 2, 640);
       // Perform detection and any other processing here
-      await detect(vidSource, model, canvasRef, () => {}, false);
+      await detect(vidSource, model, canvasRef, () => {}, true, faceBox);
     
       // Encode the current content of the canvas as a video frame
       await encodeVideoFrame(canvasRef, timestamp);
