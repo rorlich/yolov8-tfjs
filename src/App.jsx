@@ -225,6 +225,10 @@ const App = () => {
           onLoad={() => detect(imageRef.current, model, canvasRef.current)}
         />
         <video
+          style={{
+            
+          }}
+          playsInline
           autoPlay
           muted
           ref={cameraRef}
