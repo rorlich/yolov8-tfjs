@@ -1,6 +1,6 @@
 import * as tf from "@tensorflow/tfjs";
 import { renderBoxes, createMaskedFrame } from "./renderBox";
-import { tensorToDownloadableImage, cropTensor, scaleAndPositionBoundingBox } from "./tensor";
+import { tensorToDownloadableImage, cropTensor, scaleAndPositionBoundingBox, convertTensorToImageData } from "./tensor";
 import labels from "./labels.json";
 
 const numClass = labels.length;
@@ -16,7 +16,7 @@ const numClass = labels.length;
 const preprocess = (source, modelWidth, modelHeight, faceBox) => {
   let xRatio, yRatio; // ratios for boxes
 
-  const input = tf.tidy(() => {
+  const [frame, input] = tf.tidy(() => {
     const img = tf.browser.fromPixels(source);
 
     const croppedImg = faceBox ? cropTensor(img, faceBox) : img;
@@ -52,10 +52,10 @@ const preprocess = (source, modelWidth, modelHeight, faceBox) => {
       [0, 0],
     ]);
 
-    return imgPadded.div(255.0).expandDims(0); // normalize and add batch dimension
+    return [img, imgPadded.div(255.0).expandDims(0)]; // normalize and add batch dimension
   });
 
-  return [input, xRatio, yRatio];
+  return [frame, input, xRatio, yRatio];
 };
 
 /**
@@ -75,35 +75,46 @@ export const detect = async (source, model, canvasRef, callback = () => { }, use
 
   tf.engine().startScope(); // start scoping tf engine
 
-  const [input, xRatio, yRatio] = preprocess(source, modelWidth, modelHeight, faceBox); // preprocess image
-  
+  const [frame, input, xRatio, yRatio] = preprocess(source, modelWidth, modelHeight, faceBox); // preprocess image
+  const frameData = await convertTensorToImageData(frame); // convert tensor to image data
+
   const res = model.net.execute(input); // inference model
   console.log("model result", res);
 
   const transRes = res.transpose([0, 2, 1]); // transpose result [b, det, n] => [b, n, det]
-  const boxes = tf.tidy(() => {
-    const w = transRes.slice([0, 0, 2], [-1, -1, 1]); // get width
-    const h = transRes.slice([0, 0, 3], [-1, -1, 1]); // get height
-    const x1 = tf.sub(transRes.slice([0, 0, 0], [-1, -1, 1]), tf.div(w, 2)); // x1
-    const y1 = tf.sub(transRes.slice([0, 0, 1], [-1, -1, 1]), tf.div(h, 2)); // y1
-    return tf
-      .concat(
-        [
-          y1,
-          x1,
-          tf.add(y1, h), //y2
-          tf.add(x1, w), //x2
-        ],
-        2
-      )
-      .squeeze();
-  }); // process boxes [y1, x1, y2, x2]
-
+  const numDetections = transRes.shape[2]; // number of detections
+  if (numDetections === 0) {
+    tf.dispose([res, transRes]); // clear memory
+    callback();
+    tf.engine().endScope(); // end of scoping
+    return;
+  }
+  
   const [scores, classes] = tf.tidy(() => {
     // class scores
     const rawScores = transRes.slice([0, 0, 4], [-1, -1, numClass]).squeeze(0);
     return [rawScores.max(1), rawScores.argMax(1)];
   }); // get max scores and classes index
+  // const highConfidenceMask = scores.greater(0.6); // filter indices with scores > 0.6
+  // const highConfidenceIndices = highConfidenceMask.where(highConfidenceMask); // get indices of high confidence scores
+
+  // if (highConfidenceIndices.shape[0] === 0) {
+  //   tf.dispose([res, transRes, scores]); // clear memory
+  //   callback();
+  //   tf.engine().endScope(); // end of scoping
+  //   return;
+  // }
+
+  const boxes = tf.tidy(() => {
+    const w = transRes.slice([0, 0, 2], [-1, -1, 1]); // get width
+    const h = transRes.slice([0, 0, 3], [-1, -1, 1]); // get height
+    const x1 = tf.sub(transRes.slice([0, 0, 0], [-1, -1, 1]), tf.div(w, 2)); // x1
+    const y1 = tf.sub(transRes.slice([0, 0, 1], [-1, -1, 1]), tf.div(h, 2)); // y1
+    const x2 = tf.add(x1, w)
+    const y2 = tf.add(y1, h)
+    return tf.concat([y1, x1, y2, x2], 2).squeeze(); 
+  }); // process boxes [y1, x1, y2, x2]
+
 
   const boxes_data = boxes.dataSync(); // get boxes data
   const scores_data = scores.dataSync(); // get scores data
@@ -112,15 +123,15 @@ export const detect = async (source, model, canvasRef, callback = () => { }, use
   // Filter arrays
   let filteredIndices = [];
   let maxConfIndex = -1;
-  let maxConf = -1;
+  let maxConf = 0.3;
 
   for (let i = 0; i < classes_data.length; i++) {
     if (classes_data[i] === 0) {
       if (scores_data[i] > maxConf) {
         maxConf = scores_data[i];
         maxConfIndex = i;
+        filteredIndices.push(i);
       }
-      filteredIndices.push(i);
     }
   }
 
@@ -145,9 +156,9 @@ export const detect = async (source, model, canvasRef, callback = () => { }, use
 
   // Replace the renderBoxes call with this conditional block
   if (useMask) {
-    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], source);
+    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], frameData);
   } else {
-    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], source);
+    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], frameData);
   }
 
   tf.dispose([res, transRes, boxes, scores, classes]); // clear memory

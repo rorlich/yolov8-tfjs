@@ -72,6 +72,36 @@ export const cropTensor = (tensor, boundingBox) => {
     });
   };
 
+/**
+ * Convert a tensor to ImageData
+ * @param {tf.Tensor} tensor The input tensor (image) with shape [height, width, channels]
+ * @param {boolean} [isNormalized=false] Flag indicating if the tensor values are normalized (range 0-1)
+ * @returns {Promise<ImageData>} A promise that resolves to an ImageData object
+ */
+export const convertTensorToImageData = async (tensor, isNormalized = false) => {
+    // Ensure the tensor is 3-dimensional
+    if (tensor.rank !== 3) {
+      throw new Error('Tensor must be of shape [height, width, channels]');
+    }
+  
+    const [height, width, numChannels] = tensor.shape;
+    const tensorData = await tensor.data(); // Get the data from the tensor
+  
+    // Create an ImageData object
+    const imageData = new ImageData(width, height);
+    for (let i = 0; i < height * width; i++) {
+      const j = i * 4; // index in imageData
+      const k = i * numChannels; // index in tensorData
+      const multiplier = isNormalized ? 255 : 1;
+      imageData.data[j] = tensorData[k] * multiplier; // R (or B if tensor is in BGR)
+      imageData.data[j + 1] = tensorData[k + 1] * multiplier; // G
+      imageData.data[j + 2] = tensorData[k + 2] * multiplier; // B (or R if tensor is in BGR)
+      imageData.data[j + 3] = 255; // A (fully opaque)
+    }
+  
+    return imageData;
+  };  
+  
   /**
  * Convert a tensor to a downloadable image
  * @param {tf.Tensor} tensor The input tensor (image)
