@@ -35,14 +35,20 @@ const App = () => {
   const modelName = "yolov8n";
 
   let processIntervalId = null;
-  
-  const processStream = (vidSource, model, canvasRef) => {  
+  let width = WIDTH;
+  let height = HEIGHT;
+
+  const processStream = (vidSource, model, canvasRef) => { 
+    if (vidSource !== null) {
+      width = vidSource.videoWidth;
+      height = vidSource.videoHeight;
+    }
     initMuxer(); 
     
     let isProcessing = false; // Flag to track if processFrame is currently running
 
-    canvasRef.width = WIDTH
-    canvasRef.height = HEIGHT
+    canvasRef.width = width
+    canvasRef.height = height
 
     /**
      * Function to detect every frame from video
@@ -61,6 +67,7 @@ const App = () => {
       if (canvasRef === null) {
         return; // handle if canvas is not ready
       }
+
       console.log(`video dims: ${vidSource.videoWidth} x ${vidSource.videoHeight} canvas dims: ${canvasRef.width} x ${canvasRef.height}`);
       const timestamp = performance.now() * 1000;
 
@@ -93,8 +100,8 @@ const App = () => {
 
       video: {
         codec: "avc",
-        width:  WIDTH,
-        height:  HEIGHT,
+        width:  width,
+        height:  height,
       },
       // Puts metadata to the start of the file. Since we're using ArrayBufferTarget anyway, this makes no difference
       // to memory footprint.
@@ -110,8 +117,8 @@ const App = () => {
     });
     videoEncoder.configure({
       codec: "avc1.64001F",
-      width:  WIDTH,
-      height: HEIGHT,
+      width:  width,
+      height: height,
       bitrate: 2_000_000, // 2 Mbps
       framerate: FRAME_RATE,
     });
@@ -235,13 +242,13 @@ const App = () => {
           onPlay={() => processStream(cameraRef.current, model, canvasRef.current)}
           onEndedCapture={() => console.log("Stopped")}
         />
-        {/* <video
+        <video
           autoPlay
           muted
           ref={videoRef}
           onPlay={() => processStream(videoRef.current, model, canvasRef.current)}
-        /> */}
-        <canvas width={model.inputShape[1]} height={model.inputShape[2]} ref={canvasRef} />
+        /> 
+        <canvas ref={canvasRef} />
       </div>
 
       <ButtonHandler imageRef={imageRef} cameraRef={cameraRef} videoRef={videoRef} />
