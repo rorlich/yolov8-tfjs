@@ -470,6 +470,11 @@ ansi-styles@^4.0.0, ansi-styles@^4.1.0:
   dependencies:
     color-convert "^2.0.1"
 
+apng-js@^1.1.2:
+  version "1.1.2"
+  resolved "https://registry.yarnpkg.com/apng-js/-/apng-js-1.1.2.tgz#546be2b3e33a86350df13ae6d7818d6a5f5aa701"
+  integrity sha512-2Y+zFxXek28EU6KZ6hyyPbPlybH5tTO+QgHqWOFu2DwLMmSUdTX21l/f6mpC5g9hgYeSQJI6l4ABzsCyHPjC4g==
+
 argparse@^1.0.10:
   version "1.0.10"
   resolved "https://registry.yarnpkg.com/argparse/-/argparse-1.0.10.tgz#bcd6791ea5ae09725e17e5ad988134cd40b3d911"
@@ -1081,6 +1086,11 @@ p-try@^2.0.0:
   resolved "https://registry.yarnpkg.com/p-try/-/p-try-2.2.0.tgz#cb2868540e313d61de58fafbe35ce9004d5540e6"
   integrity sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==
 
+pako@^1.0.5:
+  version "1.0.11"
+  resolved "https://registry.yarnpkg.com/pako/-/pako-1.0.11.tgz#6c9599d340d54dfd3946380252a35705a6b992bf"
+  integrity sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==
+
 path-exists@^4.0.0:
   version "4.0.0"
   resolved "https://registry.yarnpkg.com/path-exists/-/path-exists-4.0.0.tgz#513bdbe2d3b95d7762e8c1137efa195c6c61b5b3"
@@ -1295,6 +1305,13 @@ update-browserslist-db@^1.0.9:
   dependencies:
     escalade "^3.1.1"
     picocolors "^1.0.0"
+
+upng-js@^2.1.0:
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/upng-js/-/upng-js-2.1.0.tgz#7176e73973db361ca95d0fa14f958385db6b9dd2"
+  integrity sha512-d3xzZzpMP64YkjP5pr8gNyvBt7dLk/uGI67EctzDuVp4lCZyVMo0aJO6l/VDlgbInJYDY6cnClLoBp29eKWI6g==
+  dependencies:
+    pako "^1.0.5"
 
 vite@^3.2.3:
   version "3.2.4"

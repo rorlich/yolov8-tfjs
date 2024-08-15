@@ -8,7 +8,9 @@ import { createBoundingBoxFromCenter } from "./utils/tensor";
 import "./style/App.css";
 import * as Mp4Muxer from "mp4-muxer";
 import { WIDTH, HEIGHT, FRAME_RATE } from "./consts";
+import UPNG from 'upng-js';
 
+const clockMS = 1000 / FRAME_RATE;
 let startTime = null;
 let lastKeyFrame = null;
 let framesGenerated = 0;
@@ -31,6 +33,9 @@ const App = () => {
   const skippedFramesRef = useRef(0); // Ref to track skipped frames
   const skippedFramesDisplayRef = useRef(null); // Ref to the HTML element for displaying skipped frames
   const [framesSkippedCount, setFramesSkippedCount] = useState(0);
+  const framesRef = useRef([]); // Ref to store the frames
+  const framesDelsRef = useRef([]); // Ref to store the frame delays
+
   // model configs
   const modelName = "yolov8n";
 
@@ -82,16 +87,20 @@ const App = () => {
       const faceBox = createBoundingBoxFromCenter(vidSource.videoWidth / 2, vidSource.videoHeight / 2, 640);
       // Perform detection and any other processing here
       await detect(vidSource, model, canvasRef, () => {}, true, faceBox);
+
     
       // Encode the current content of the canvas as a video frame
-      await encodeVideoFrame(canvasRef, timestamp);
-    
+      // await encodeVideoFrame(canvasRef, timestamp);
+      const ctx = canvasRef.getContext('2d');
+      const imageData = ctx.getImageData(0, 0, canvasRef.width, canvasRef.height);
+      framesRef.current.push(imageData.data.buffer);
+      framesDelsRef.current.push(clockMS);
       isProcessing = false;
     
       // processTimeoutId = setTimeout(processFrame, Math.ceil(1000 / 15));
     };
   
-    processIntervalId = setInterval(processFrame, Math.ceil(1000 / 15));
+    processIntervalId = setInterval(processFrame, Math.ceil(clockMS));
   };
 
   const initMuxer = async () => {
@@ -164,19 +173,24 @@ const App = () => {
     let buffer = muxerRef.current?.target.buffer;
 
     if (download) {
-       downloadBlob(new Blob([buffer]));
+      if (framesRef.current && framesRef.current.length > 0 && framesDelsRef.current && framesDelsRef.current.length > 0) {
+        const blob = UPNG.encode(framesRef.current, canvasRef.current.width, canvasRef.current.height, 0, framesDelsRef.current);
+        downloadBlob(new Blob([blob]), 'mask.apng');
+      } else {
+        downloadBlob(new Blob([buffer]), 'mask.mp4');
+      }
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
   };
 
-  const downloadBlob = (blob) => {
+  const downloadBlob = (blob, file) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.style.display = "none";
     a.href = url;
-    a.download = "HumanFaceDetection.mp4";
+    a.download = file;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
