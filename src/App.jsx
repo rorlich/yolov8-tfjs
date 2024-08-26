@@ -109,10 +109,10 @@ const App = () => {
     
       // Encode the current content of the canvas as a video frame
       // await encodeVideoFrame(canvasRef, timestamp);
-      const ctx = canvasRef.getContext('2d');
-      const imageData = ctx.getImageData(0, 0, canvasRef.width, canvasRef.height);
-      framesRef.current.push(imageData.data.buffer);
-      framesDelsRef.current.push(clockMS);
+      // const ctx = canvasRef.getContext('2d');
+      // const imageData = ctx.getImageData(0, 0, canvasRef.width, canvasRef.height);
+      // framesRef.current.push(imageData.data.buffer);
+      // framesDelsRef.current.push(clockMS);
       isProcessing = false;
     
       // processTimeoutId = setTimeout(processFrame, Math.ceil(1000 / 15));
