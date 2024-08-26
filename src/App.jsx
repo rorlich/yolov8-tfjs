@@ -9,6 +9,7 @@ import "./style/App.css";
 import * as Mp4Muxer from "mp4-muxer";
 import { WIDTH, HEIGHT, FRAME_RATE } from "./consts";
 import UPNG from 'upng-js';
+import APNGBuilder from "./utils/APNGBuilder";
 
 const clockMS = 1000 / FRAME_RATE;
 let startTime = null;
@@ -35,6 +36,16 @@ const App = () => {
   const [framesSkippedCount, setFramesSkippedCount] = useState(0);
   const framesRef = useRef([]); // Ref to store the frames
   const framesDelsRef = useRef([]); // Ref to store the frame delays
+  const startTimestampRef = useRef(null); // Ref to store the start timestamp
+  const currentTimestampRef = useRef(null); // Ref to store the current timestamp
+  const endTimestampRef = useRef(null); // Ref to store the end timestamp
+
+  const builderAPNGRef = useRef(null);
+
+  if (!builderAPNGRef?.current) {
+    const apb = new APNGBuilder();
+    builderAPNGRef.current = apb
+  }
 
   // model configs
   const modelName = "yolov8n";
@@ -48,7 +59,7 @@ const App = () => {
       width = vidSource.videoWidth;
       height = vidSource.videoHeight;
     }
-    initMuxer(); 
+    // initMuxer(); 
     
     let isProcessing = false; // Flag to track if processFrame is currently running
 
@@ -76,6 +87,12 @@ const App = () => {
       console.log(`video dims: ${vidSource.videoWidth} x ${vidSource.videoHeight} canvas dims: ${canvasRef.width} x ${canvasRef.height}`);
       const timestamp = performance.now() * 1000;
 
+      if (startTimestampRef.current === null) {
+        startTimestampRef.current = timestamp;
+      }
+
+      currentTimestampRef.current = timestamp;
+
       if (isProcessing) { // NOT RELEVANT 
         setFramesSkippedCount((prev) => prev + 1);
         return; // Skip this interval if the previous frame is still processing
@@ -88,6 +105,7 @@ const App = () => {
       // Perform detection and any other processing here
       await detect(vidSource, model, canvasRef, () => {}, true, faceBox);
 
+      await builderAPNGRef?.current.addFrame(canvasRef);
     
       // Encode the current content of the canvas as a video frame
       // await encodeVideoFrame(canvasRef, timestamp);
@@ -166,20 +184,32 @@ const App = () => {
 
   const closeVideoEncoder = async (download) => {
     recording = false;
-    if (videoEncoderRef.current) {
-      await videoEncoderRef.current.flush();
-    }
-    await muxerRef.current?.finalize();
-    let buffer = muxerRef.current?.target.buffer;
+
+    endTimestampRef.current = currentTimestampRef.current;
 
     if (download) {
-      if (framesRef.current && framesRef.current.length > 0 && framesDelsRef.current && framesDelsRef.current.length > 0) {
-        const blob = UPNG.encode(framesRef.current, canvasRef.current.width, canvasRef.current.height, 0, framesDelsRef.current);
-        downloadBlob(new Blob([blob]), 'mask.apng');
-      } else {
-        downloadBlob(new Blob([buffer]), 'mask.mp4');
-      }
+      const apngBuilderBlob = builderAPNGRef.current.getAPng();
+      downloadBlob(new Blob([apngBuilderBlob]), 'mask.apng');
     }
+
+    // calculate time in seconds between end and start
+    const timeDiff = (endTimestampRef.current - startTimestampRef.current) / 1000000;
+    console.log(`Time taken to record: ${timeDiff} seconds`);
+
+    // if (videoEncoderRef.current) {
+    //   await videoEncoderRef.current.flush();
+    // }
+    // await muxerRef.current?.finalize();
+    // let buffer = muxerRef.current?.target.buffer;
+
+    // if (download) {
+    //   if (framesRef.current && framesRef.current.length > 0 && framesDelsRef.current && framesDelsRef.current.length > 0) {
+    //     const blob = UPNG.encode(framesRef.current, canvasRef.current.width, canvasRef.current.height, 0, framesDelsRef.current);
+    //     downloadBlob(new Blob([blob]), 'mask-old.apng');
+    //   } else {
+    //     downloadBlob(new Blob([buffer]), 'mask.mp4');
+    //   }
+    // }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
