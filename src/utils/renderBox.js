@@ -1,4 +1,5 @@
 import labels from "./labels.json";
+import { WIDTH, HEIGHT } from "../consts";
 
 /**
  * Render prediction boxes
@@ -8,9 +9,13 @@ import labels from "./labels.json";
  * @param {Array} classes_data class array
  * @param {Array[Number]} ratios boxes ratio [xRatio, yRatio]
  */
-export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ratios) => {
+export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ratios, frame) => {
   const ctx = canvasRef.getContext("2d");
+  // console.log("canvas size", ctx.canvas.width, ctx.canvas.height);
+
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
+  ctx.putImageData(frame, 0, 0);
+  // ctx.drawImage(frame, 0, 0, frame.width, frame.height);
 
   const colors = new Colors();
 
@@ -29,10 +34,10 @@ export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ra
     const score = (scores_data[i] * 100).toFixed(1);
 
     let [y1, x1, y2, x2] = boxes_data.slice(i * 4, (i + 1) * 4);
-    x1 *= ratios[0];
-    x2 *= ratios[0];
-    y1 *= ratios[1];
-    y2 *= ratios[1];
+    // x1 *= ratios[0];
+    // x2 *= ratios[0];
+    // y1 *= ratios[1];
+    // y2 *= ratios[1];
     const width = x2 - x1;
     const height = y2 - y1;
 
@@ -71,24 +76,36 @@ export const renderBoxes = (canvasRef, boxes_data, scores_data, classes_data, ra
  * @param {Array} classes_data class array
  * @param {Array[Number]} ratios boxes ratio [xRatio, yRatio]
  */
-export const createMaskedFrame = (canvasRef, boxes_data, scores_data, classes_data, ratios) => {
+export const createMaskedFrame = (canvasRef, boxes_data, scores_data, classes_data, ratios, frame) => {
   const ctx = canvasRef.getContext("2d");
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // clean canvas
+  
+  // Clear the main canvas and fill it with black
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.fillStyle = 'black';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
   if (scores_data.length > 0) {
     let [y1, x1, y2, x2] = boxes_data.slice(0, 4);
-    x1 *= ratios[0];
-    x2 *= ratios[0];
-    y1 *= ratios[1];
-    y2 *= ratios[1];
 
-    // Fill the entire canvas with black
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    // Create a temporary black mask canvas
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = ctx.canvas.width;
+    tempCanvas.height = ctx.canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.fillStyle = 'black';
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-    // Clear the area inside the first box
-    ctx.clearRect(x1, y1, x2 - x1, y2 - y1);
+    // Clear the area inside the box
+    tempCtx.clearRect(x1, y1, x2 - x1, y2 - y1);
+    
+    // Put the frame image data onto the main canvas
+    ctx.putImageData(frame, 0, 0);
+
+    // Draw the temporary canvas mask onto the main canvas
+    ctx.drawImage(tempCanvas, 0, 0);
   }
+
+
 };
 
 class Colors {
@@ -125,8 +142,8 @@ class Colors {
     var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result
       ? `rgba(${[parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)].join(
-          ", "
-        )}, ${alpha})`
+        ", "
+      )}, ${alpha})`
       : null;
   };
 }

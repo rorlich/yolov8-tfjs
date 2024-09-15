@@ -1,5 +1,6 @@
 import * as tf from "@tensorflow/tfjs";
 import { renderBoxes, createMaskedFrame } from "./renderBox";
+import { tensorToDownloadableImage, cropTensor, scaleAndPositionBoundingBox, convertTensorToImageData } from "./tensor";
 import labels from "./labels.json";
 
 const numClass = labels.length;
@@ -9,33 +10,52 @@ const numClass = labels.length;
  * @param {HTMLVideoElement|HTMLImageElement} source
  * @param {Number} modelWidth
  * @param {Number} modelHeight
+ * @param {Array} faceBox The bounding box [x1, y1, x2, y2]
  * @returns input tensor, xRatio and yRatio
  */
-const preprocess = (source, modelWidth, modelHeight) => {
+const preprocess = (source, modelWidth, modelHeight, faceBox) => {
   let xRatio, yRatio; // ratios for boxes
 
-  const input = tf.tidy(() => {
+  const [frame, input] = tf.tidy(() => {
     const img = tf.browser.fromPixels(source);
 
-    // padding image to square => [n, m] to [n, n], n > m
-    const [h, w] = img.shape.slice(0, 2); // get source width and height
-    const maxSize = Math.max(w, h); // get max size
-    const imgPadded = img.pad([
-      [0, maxSize - h], // padding y [bottom only]
-      [0, maxSize - w], // padding x [right only]
+    const croppedImg = faceBox ? cropTensor(img, faceBox) : img;
+    const [originalH, originalW] = croppedImg.shape.slice(0, 2); // get source width and height
+
+    // Get source dimensions
+    const [h, w] = croppedImg.shape.slice(0, 2); // get source width and height
+    const aspectRatio = w / h; // calculate aspect ratio
+
+    // Calculate new dimensions while maintaining aspect ratio
+    let newWidth, newHeight;
+    if (w > h) {
+      newWidth = modelWidth;
+      newHeight = modelWidth / aspectRatio;
+    } else {
+      newHeight = modelHeight;
+      newWidth = modelHeight * aspectRatio;
+    }
+
+    // Resize the image to the new dimensions
+    const imgResized = tf.image.resizeBilinear(croppedImg, [Math.round(newHeight), Math.round(newWidth)]);
+    xRatio = modelWidth / w; // update xRatio based on the original width
+    yRatio = modelHeight / h; // update yRatio based on the original height
+
+    // Calculate padding to fit the resized image into the model's input dimensions
+    const padHeight = modelHeight - Math.round(newHeight);
+    const padWidth = modelWidth - Math.round(newWidth);
+
+    // Add padding to the resized image to fit the model dimensions
+    const imgPadded = imgResized.pad([
+      [Math.floor(padHeight / 2), Math.ceil(padHeight / 2)], // padding y [top, bottom]
+      [Math.floor(padWidth / 2), Math.ceil(padWidth / 2)],   // padding x [left, right]
       [0, 0],
     ]);
 
-    xRatio = maxSize / w; // update xRatio
-    yRatio = maxSize / h; // update yRatio
-
-    return tf.image
-      .resizeBilinear(imgPadded, [modelWidth, modelHeight]) // resize frame
-      .div(255.0) // normalize
-      .expandDims(0); // add batch
+    return [img, imgPadded.div(255.0).expandDims(0)]; // normalize and add batch dimension
   });
 
-  return [input, xRatio, yRatio];
+  return [frame, input, xRatio, yRatio];
 };
 
 /**
@@ -46,60 +66,72 @@ const preprocess = (source, modelWidth, modelHeight) => {
  * @param {VoidFunction} callback function to run after detection process
  * @param {Boolean} useMask whether to use createMaskedFrame or renderBoxes
  */
-export const detect = async (source, model, canvasRef, callback = () => {}, useMask = false) => {
+export const detect = async (source, model, canvasRef, callback = () => { }, useMask = false, faceBox = null) => {
   const [modelWidth, modelHeight] = model.inputShape.slice(1, 3); // get model width and height
 
+  // Get the original image dimensions
+  const originalWidth = source.width || source.videoWidth;
+  const originalHeight = source.height || source.videoHeight;
+
   tf.engine().startScope(); // start scoping tf engine
-  
-  const [input, xRatio, yRatio] = preprocess(source, modelWidth, modelHeight); // preprocess image
+
+  const [frame, input, xRatio, yRatio] = preprocess(source, modelWidth, modelHeight, faceBox); // preprocess image
+  const frameData = await convertTensorToImageData(frame); // convert tensor to image data
 
   const res = model.net.execute(input); // inference model
   console.log("model result", res);
 
-
   const transRes = res.transpose([0, 2, 1]); // transpose result [b, det, n] => [b, n, det]
+  const numDetections = transRes.shape[2]; // number of detections
+  if (numDetections === 0) {
+    tf.dispose([res, transRes]); // clear memory
+    callback();
+    tf.engine().endScope(); // end of scoping
+    return;
+  }
+  
+  const [scores, classes] = tf.tidy(() => {
+    // class scores
+    const rawScores = transRes.slice([0, 0, 4], [-1, -1, numClass]).squeeze(0);
+    return [rawScores.max(1), rawScores.argMax(1)];
+  }); // get max scores and classes index
+  // const highConfidenceMask = scores.greater(0.6); // filter indices with scores > 0.6
+  // const highConfidenceIndices = highConfidenceMask.where(highConfidenceMask); // get indices of high confidence scores
+
+  // if (highConfidenceIndices.shape[0] === 0) {
+  //   tf.dispose([res, transRes, scores]); // clear memory
+  //   callback();
+  //   tf.engine().endScope(); // end of scoping
+  //   return;
+  // }
+
   const boxes = tf.tidy(() => {
     const w = transRes.slice([0, 0, 2], [-1, -1, 1]); // get width
     const h = transRes.slice([0, 0, 3], [-1, -1, 1]); // get height
     const x1 = tf.sub(transRes.slice([0, 0, 0], [-1, -1, 1]), tf.div(w, 2)); // x1
     const y1 = tf.sub(transRes.slice([0, 0, 1], [-1, -1, 1]), tf.div(h, 2)); // y1
-    return tf
-      .concat(
-        [
-          y1,
-          x1,
-          tf.add(y1, h), //y2
-          tf.add(x1, w), //x2
-        ],
-        2
-      )
-      .squeeze();
+    const x2 = tf.add(x1, w)
+    const y2 = tf.add(y1, h)
+    return tf.concat([y1, x1, y2, x2], 2).squeeze(); 
   }); // process boxes [y1, x1, y2, x2]
 
-  const [scores, classes] = tf.tidy(() => {
-    // class scores
-    const rawScores = transRes.slice([0, 0, 4], [-1, -1, numClass]).squeeze(0); // #6 only squeeze axis 0 to handle only 1 class models
-    return [rawScores.max(1), rawScores.argMax(1)];
-  }); // get max scores and classes index
 
-  const nms = await tf.image.nonMaxSuppressionAsync(boxes, scores, 500, 0.45, 0.2); // NMS to filter boxes
-
-  const boxes_data = boxes.gather(nms, 0).dataSync(); // indexing boxes by nms index
-  const scores_data = scores.gather(nms, 0).dataSync(); // indexing scores by nms index
-  const classes_data = classes.gather(nms, 0).dataSync(); // indexing classes by nms index
+  const boxes_data = boxes.dataSync(); // get boxes data
+  const scores_data = scores.dataSync(); // get scores data
+  const classes_data = classes.dataSync(); // get classes
 
   // Filter arrays
   let filteredIndices = [];
   let maxConfIndex = -1;
-  let maxConf = -1;
+  let maxConf = 0.3;
 
   for (let i = 0; i < classes_data.length; i++) {
     if (classes_data[i] === 0) {
       if (scores_data[i] > maxConf) {
         maxConf = scores_data[i];
         maxConfIndex = i;
+        filteredIndices.push(i);
       }
-      filteredIndices.push(i);
     }
   }
 
@@ -108,24 +140,28 @@ export const detect = async (source, model, canvasRef, callback = () => {}, useM
     filteredIndices = [maxConfIndex];
   }
 
+  if (filteredIndices.length === 0) {
+    // tensorToDownloadableImage(input, "input.png");
+  }
+
   // Create new filtered arrays
   const filtered_boxes_data = filteredIndices.reduce((acc, i) => {
-    acc.push(...boxes_data.slice(i * 4, (i + 1) * 4));
+    const box = boxes_data.slice(i * 4, (i + 1) * 4);
+    const adjusted_box = scaleAndPositionBoundingBox(box, xRatio, yRatio, faceBox, originalWidth, originalHeight);
+    acc.push(...adjusted_box);
     return acc;
   }, []);
   const filtered_scores_data = filteredIndices.map(i => scores_data[i]);
   const filtered_classes_data = filteredIndices.map(i => classes_data[i]);
 
-  
   // Replace the renderBoxes call with this conditional block
   if (useMask) {
-    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio]);
+    createMaskedFrame(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], frameData);
   } else {
-    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [xRatio, yRatio]);
+    renderBoxes(canvasRef, filtered_boxes_data, filtered_scores_data, filtered_classes_data, [1, 1], frameData);
   }
 
-  // renderBoxes(canvasRef, boxes_data, scores_data, classes_data, [xRatio, yRatio]); // render boxes
-  tf.dispose([res, transRes, boxes, scores, classes, nms]); // clear memory
+  tf.dispose([res, transRes, boxes, scores, classes]); // clear memory
 
   callback();
 

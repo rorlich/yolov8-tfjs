@@ -4,10 +4,14 @@ import "@tensorflow/tfjs-backend-webgl"; // set backend to webgl
 import Loader from "./components/loader";
 import ButtonHandler from "./components/btn-handler";
 import { detect, detectVideo } from "./utils/detect";
+import { createBoundingBoxFromCenter } from "./utils/tensor";
 import "./style/App.css";
 import * as Mp4Muxer from "mp4-muxer";
 import { WIDTH, HEIGHT, FRAME_RATE } from "./consts";
+import UPNG from 'upng-js';
+import APNGBuilder from "./utils/APNGBuilder";
 
+const clockMS = 1000 / FRAME_RATE;
 let startTime = null;
 let lastKeyFrame = null;
 let framesGenerated = 0;
@@ -30,18 +34,37 @@ const App = () => {
   const skippedFramesRef = useRef(0); // Ref to track skipped frames
   const skippedFramesDisplayRef = useRef(null); // Ref to the HTML element for displaying skipped frames
   const [framesSkippedCount, setFramesSkippedCount] = useState(0);
+  const framesRef = useRef([]); // Ref to store the frames
+  const framesDelsRef = useRef([]); // Ref to store the frame delays
+  const startTimestampRef = useRef(null); // Ref to store the start timestamp
+  const currentTimestampRef = useRef(null); // Ref to store the current timestamp
+  const endTimestampRef = useRef(null); // Ref to store the end timestamp
+
+  const builderAPNGRef = useRef(null);
+
+  if (!builderAPNGRef?.current) {
+    const apb = new APNGBuilder();
+    builderAPNGRef.current = apb
+  }
+
   // model configs
   const modelName = "yolov8n";
 
   let processIntervalId = null;
-  
-  const processStream = (vidSource, model, canvasRef) => {  
-    initMuxer(); 
+  let width = WIDTH;
+  let height = HEIGHT;
+
+  const processStream = (vidSource, model, canvasRef) => { 
+    if (vidSource !== null) {
+      width = vidSource.videoWidth;
+      height = vidSource.videoHeight;
+    }
+    // initMuxer(); 
     
     let isProcessing = false; // Flag to track if processFrame is currently running
 
-    canvasRef.width = WIDTH
-    canvasRef.height = HEIGHT
+    canvasRef.width = width
+    canvasRef.height = height
 
     /**
      * Function to detect every frame from video
@@ -61,26 +84,41 @@ const App = () => {
         return; // handle if canvas is not ready
       }
 
+      console.log(`video dims: ${vidSource.videoWidth} x ${vidSource.videoHeight} canvas dims: ${canvasRef.width} x ${canvasRef.height}`);
       const timestamp = performance.now() * 1000;
 
-      if (isProcessing) {
+      if (startTimestampRef.current === null) {
+        startTimestampRef.current = timestamp;
+      }
+
+      currentTimestampRef.current = timestamp;
+
+      if (isProcessing) { // NOT RELEVANT 
         setFramesSkippedCount((prev) => prev + 1);
         return; // Skip this interval if the previous frame is still processing
       }
 
       isProcessing = true;
       console.log("Processing at", new Date().toISOString());
+      
+      const faceBox = createBoundingBoxFromCenter(vidSource.videoWidth / 2, vidSource.videoHeight / 2, 640);
+      // Perform detection and any other processing here
+      await detect(vidSource, model, canvasRef, () => {}, true, faceBox);
 
-      await detect(vidSource, model, canvasRef, () => {
-        
-      }, false);
-
-      await encodeVideoFrame(canvasRef, timestamp);
+      await builderAPNGRef?.current.addFrame(canvasRef);
+    
+      // Encode the current content of the canvas as a video frame
+      // await encodeVideoFrame(canvasRef, timestamp);
+      // const ctx = canvasRef.getContext('2d');
+      // const imageData = ctx.getImageData(0, 0, canvasRef.width, canvasRef.height);
+      // framesRef.current.push(imageData.data.buffer);
+      // framesDelsRef.current.push(clockMS);
       isProcessing = false;
+    
       // processTimeoutId = setTimeout(processFrame, Math.ceil(1000 / 15));
     };
   
-    processIntervalId = setInterval(processFrame, Math.ceil(1000 / 15));
+    processIntervalId = setInterval(processFrame, Math.ceil(clockMS));
   };
 
   const initMuxer = async () => {
@@ -89,8 +127,8 @@ const App = () => {
 
       video: {
         codec: "avc",
-        width: canvasRef.current?.width || WIDTH,
-        height: canvasRef.current?.height || HEIGHT,
+        width:  width,
+        height:  height,
       },
       // Puts metadata to the start of the file. Since we're using ArrayBufferTarget anyway, this makes no difference
       // to memory footprint.
@@ -106,8 +144,8 @@ const App = () => {
     });
     videoEncoder.configure({
       codec: "avc1.64001F",
-      width: canvasRef.current?.width || WIDTH,
-      height: canvasRef.current?.height || HEIGHT,
+      width:  width,
+      height: height,
       bitrate: 2_000_000, // 2 Mbps
       framerate: FRAME_RATE,
     });
@@ -146,26 +184,43 @@ const App = () => {
 
   const closeVideoEncoder = async (download) => {
     recording = false;
-    if (videoEncoderRef.current) {
-      await videoEncoderRef.current.flush();
-    }
-    await muxerRef.current?.finalize();
-    let buffer = muxerRef.current?.target.buffer;
+
+    endTimestampRef.current = currentTimestampRef.current;
 
     if (download) {
-      downloadBlob(new Blob([buffer]));
+      const apngBuilderBlob = builderAPNGRef.current.getAPng();
+      downloadBlob(new Blob([apngBuilderBlob]), 'mask.apng');
     }
+
+    // calculate time in seconds between end and start
+    const timeDiff = (endTimestampRef.current - startTimestampRef.current) / 1000000;
+    console.log(`Time taken to record: ${timeDiff} seconds`);
+
+    // if (videoEncoderRef.current) {
+    //   await videoEncoderRef.current.flush();
+    // }
+    // await muxerRef.current?.finalize();
+    // let buffer = muxerRef.current?.target.buffer;
+
+    // if (download) {
+    //   if (framesRef.current && framesRef.current.length > 0 && framesDelsRef.current && framesDelsRef.current.length > 0) {
+    //     const blob = UPNG.encode(framesRef.current, canvasRef.current.width, canvasRef.current.height, 0, framesDelsRef.current);
+    //     downloadBlob(new Blob([blob]), 'mask-old.apng');
+    //   } else {
+    //     downloadBlob(new Blob([buffer]), 'mask.mp4');
+    //   }
+    // }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
   };
 
-  const downloadBlob = (blob) => {
+  const downloadBlob = (blob, file) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.style.display = "none";
     a.href = url;
-    a.download = "HumanFaceDetection.mp4";
+    a.download = file;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -221,6 +276,10 @@ const App = () => {
           onLoad={() => detect(imageRef.current, model, canvasRef.current)}
         />
         <video
+          style={{
+            
+          }}
+          playsInline
           autoPlay
           muted
           ref={cameraRef}
@@ -232,8 +291,8 @@ const App = () => {
           muted
           ref={videoRef}
           onPlay={() => processStream(videoRef.current, model, canvasRef.current)}
-        />
-        <canvas width={model.inputShape[1]} height={model.inputShape[2]} ref={canvasRef} />
+        /> 
+        <canvas ref={canvasRef} />
       </div>
 
       <ButtonHandler imageRef={imageRef} cameraRef={cameraRef} videoRef={videoRef} />
